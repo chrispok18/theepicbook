@@ -1,0 +1,49 @@
+---
+# =============================================================================
+# EpicBook - configure both VMs, prepare the database, deploy the app
+#   backend  : Node.js + EpicBook (systemd service) + schema/seed import
+#   frontend : Nginx reverse proxy -> backend_private_ip:8080
+#   verify   : end-to-end checks
+# Secrets: MYSQL_ADMIN_PASSWORD comes from the environment (pipeline secret),
+#          never from a file in this repo.
+# =============================================================================
+
+- name: Pre-flight checks
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Make sure the MySQL credentials were provided by the environment
+      ansible.builtin.assert:
+        that:
+          - lookup('ansible.builtin.env', 'MYSQL_ADMIN_PASSWORD') | length > 0
+        fail_msg: "MYSQL_ADMIN_PASSWORD is not set (pipeline secret variable / local export)."
+        success_msg: "MySQL credentials present (value hidden)."
+      no_log: false
+
+- name: Configure the BACKEND (EpicBook app + database)
+  hosts: backend
+  become: true
+  vars:
+    mysql_admin_username: "{{ lookup('ansible.builtin.env', 'MYSQL_ADMIN_USERNAME') | default('epicbookadmin', true) }}"
+    mysql_admin_password: "{{ lookup('ansible.builtin.env', 'MYSQL_ADMIN_PASSWORD') }}"
+  roles:
+    - common
+    - epicbook
+
+- name: Configure the FRONTEND (Nginx reverse proxy)
+  hosts: frontend
+  become: true
+  roles:
+    - common
+    - nginx
+
+- name: Verify the complete EpicBook workflow
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    mysql_admin_username: "{{ lookup('ansible.builtin.env', 'MYSQL_ADMIN_USERNAME') | default('epicbookadmin', true) }}"
+    mysql_admin_password: "{{ lookup('ansible.builtin.env', 'MYSQL_ADMIN_PASSWORD') }}"
+  roles:
+    - verify

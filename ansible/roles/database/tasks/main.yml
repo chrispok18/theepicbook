@@ -1,0 +1,36 @@
+---
+# Runs on the BACKEND VM - the only machine the MySQL firewall allows.
+- name: Install the MySQL command-line client
+  ansible.builtin.apt:
+    name: mysql-client
+    state: present
+
+- name: Check whether the EpicBook schema is already loaded
+  ansible.builtin.command:
+    argv:
+      - mysql
+      - -h
+      - "{{ mysql_fqdn }}"
+      - -u
+      - "{{ mysql_admin_username }}"
+      - -N
+      - -e
+      - "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='{{ mysql_database }}' AND LOWER(table_name)='author';"
+  environment:
+    MYSQL_PWD: "{{ mysql_admin_password }}"
+  register: schema_check
+  changed_when: false
+  no_log: true
+
+- name: Import schema, authors and books (only on the first run)
+  ansible.builtin.shell: >
+    mysql -h {{ mysql_fqdn }} -u {{ mysql_admin_username }} {{ mysql_database }}
+    < {{ epicbook_dir }}/db/{{ item }}
+  environment:
+    MYSQL_PWD: "{{ mysql_admin_password }}"
+  loop:
+    - BuyTheBook_Schema.sql
+    - author_seed.sql
+    - books_seed.sql
+  when: schema_check.stdout | trim == "0"
+  no_log: true

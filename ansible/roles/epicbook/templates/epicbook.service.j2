@@ -1,0 +1,17 @@
+# Managed by Ansible
+[Unit]
+Description=EpicBook Node.js application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ epicbook_user }}
+WorkingDirectory={{ epicbook_dir }}
+EnvironmentFile=/etc/epicbook/epicbook.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

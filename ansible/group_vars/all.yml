@@ -1,0 +1,10 @@
+---
+# ---------------------------------------------------------------------------
+# Terraform -> Ansible handoff: the 4 NON-sensitive outputs from the
+# Infrastructure Pipeline (run #20260925.1), copied manually.
+# The MySQL password is NOT here - it comes from the pipeline secret variable.
+# ---------------------------------------------------------------------------
+app_public_ip: "68.210.36.170"
+backend_ansible_host: "68.210.36.159"
+backend_private_ip: "10.0.2.4"
+mysql_fqdn: "epicbook-mysql-s0boq.mysql.database.azure.com"

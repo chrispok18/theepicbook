@@ -1,0 +1,8 @@
+---
+epicbook_repo: https://github.com/chrispok18/theepicbook.git
+epicbook_version: main          # the pipeline passes the exact commit being deployed
+epicbook_dir: /opt/epicbook
+epicbook_user: azureuser
+epicbook_port: 8080
+mysql_database: bookstore
+nodejs_major: 20

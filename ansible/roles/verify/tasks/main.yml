@@ -1,0 +1,42 @@
+---
+- name: "Backend | EpicBook service is active"
+  ansible.builtin.command: systemctl is-active epicbook
+  changed_when: false
+  when: inventory_hostname in groups['backend']
+
+- name: "Backend | App answers locally on port 8080"
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:8080/"
+    status_code: 200
+  when: inventory_hostname in groups['backend']
+
+- name: "Backend | Database has seeded books"
+  ansible.builtin.command:
+    argv: [mysql, -h, "{{ mysql_fqdn }}", -u, "{{ mysql_admin_username }}", -N, -e,
+           "SELECT COUNT(*) FROM bookstore.Book;"]
+  environment:
+    MYSQL_PWD: "{{ mysql_admin_password }}"
+  register: book_count
+  changed_when: false
+  failed_when: book_count.stdout | trim | int < 1
+  no_log: true
+  when: inventory_hostname in groups['backend']
+
+- name: "Backend | Show book count"
+  ansible.builtin.debug:
+    msg: "Books in MySQL: {{ book_count.stdout | trim }}"
+  when: inventory_hostname in groups['backend']
+
+- name: "Frontend | Nginx proxies to the backend and serves EpicBook"
+  ansible.builtin.uri:
+    url: "http://127.0.0.1/"
+    return_content: true
+    status_code: 200
+  register: home_page
+  failed_when: "'Christian Aryee' not in home_page.content"
+  when: inventory_hostname in groups['frontend']
+
+- name: "Frontend | Show proxy target"
+  ansible.builtin.debug:
+    msg: "Nginx -> http://{{ backend_private_ip }}:8080 OK, footer shows Christian Aryee"
+  when: inventory_hostname in groups['frontend']

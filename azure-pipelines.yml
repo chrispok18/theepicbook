@@ -1,0 +1,101 @@
+# =============================================================================
+# EpicBook — APPLICATION PIPELINE (Ansible)
+# Validate -> Deploy (configure both VMs + DB + app) -> Verify (public URL)
+# Runs on the self-hosted agent (static IP = the only IP allowed to SSH).
+# Secrets: SSH private key from Secure Files, MySQL password from the secret
+# variable group. Nothing sensitive is stored in this file or in the repo.
+# =============================================================================
+
+trigger:
+  branches:
+    include:
+      - main
+
+pr: none
+
+pool:
+  name: SelfHostedPool
+
+variables:
+  - group: epicbook-mysql-secrets        # mysqlAdminUsername, mysqlAdminPassword (secret)
+  - name: ansibleDir
+    value: $(System.DefaultWorkingDirectory)/ansible
+  - name: ANSIBLE_CONFIG
+    value: $(System.DefaultWorkingDirectory)/ansible/ansible.cfg
+  - name: ANSIBLE_FORCE_COLOR
+    value: 'true'
+
+stages:
+
+  # ---------------------------------------------------------------------------
+  - stage: Validate
+    displayName: 'Ansible Validate'
+    jobs:
+      - job: validate
+        displayName: 'Syntax check + inventory'
+        steps:
+          - checkout: self
+            clean: true
+
+          - script: |
+              set -e
+              ansible --version | head -1
+              ansible-inventory --graph
+              ansible-playbook site.yml --syntax-check
+            workingDirectory: $(ansibleDir)
+            displayName: 'ansible-playbook --syntax-check'
+
+  # ---------------------------------------------------------------------------
+  - stage: Deploy
+    displayName: 'Configure VMs & Deploy EpicBook'
+    dependsOn: Validate
+    jobs:
+      - job: deploy
+        displayName: 'Run Ansible playbook'
+        steps:
+          - checkout: self
+            clean: true
+
+          - task: DownloadSecureFile@1
+            name: sshKey
+            displayName: 'Download SSH private key (Secure File)'
+            inputs:
+              secureFile: 'epicbook-azure-key'
+
+          - script: |
+              set -e
+              chmod 600 "$(sshKey.secureFilePath)"
+              ansible all -m ping --private-key "$(sshKey.secureFilePath)"
+            workingDirectory: $(ansibleDir)
+            displayName: 'Connectivity check (ansible ping)'
+
+          - script: |
+              set -e
+              ansible-playbook site.yml \
+                --private-key "$(sshKey.secureFilePath)" \
+                -e "epicbook_version=$(Build.SourceVersion)"
+            workingDirectory: $(ansibleDir)
+            displayName: 'ansible-playbook site.yml'
+            env:
+              MYSQL_ADMIN_USERNAME: $(mysqlAdminUsername)
+              MYSQL_ADMIN_PASSWORD: $(mysqlAdminPassword)
+
+  # ---------------------------------------------------------------------------
+  - stage: Verify
+    displayName: 'Verify EpicBook'
+    dependsOn: Deploy
+    jobs:
+      - job: verify
+        displayName: 'Check the public URL'
+        steps:
+          - checkout: self
+            clean: true
+
+          - script: |
+              set -e
+              APP_IP=$(grep '^app_public_ip' ansible/group_vars/all.yml | cut -d'"' -f2)
+              echo "Checking http://$APP_IP/"
+              curl -fsS --max-time 20 "http://$APP_IP/" -o page.html
+              grep -q "Christian Aryee" page.html && echo "OK: EpicBook is live and shows Christian Aryee"
+              curl -fsS --max-time 20 -o /dev/null -w "Gallery HTTP %{http_code}\n" "http://$APP_IP/gallery"
+            displayName: 'curl the frontend public IP'

@@ -1,0 +1,102 @@
+---
+# ---- 1. Node.js 20 from NodeSource ------------------------------------------
+- name: Create the apt keyrings folder
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Add the NodeSource signing key
+  ansible.builtin.get_url:
+    url: https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
+    dest: /etc/apt/keyrings/nodesource.asc
+    mode: "0644"
+
+- name: Add the NodeSource repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/nodesource.asc] https://deb.nodesource.com/node_{{ nodejs_major }}.x nodistro main"
+    filename: nodesource
+    state: present
+
+- name: Install Node.js
+  ansible.builtin.apt:
+    name: nodejs
+    state: present
+
+# ---- 2. Application code ---------------------------------------------------
+- name: Create the application folder
+  ansible.builtin.file:
+    path: "{{ epicbook_dir }}"
+    state: directory
+    owner: "{{ epicbook_user }}"
+    group: "{{ epicbook_user }}"
+    mode: "0755"
+
+- name: Download EpicBook from the Application Repository
+  ansible.builtin.git:
+    repo: "{{ epicbook_repo }}"
+    version: "{{ epicbook_version }}"
+    dest: "{{ epicbook_dir }}"
+    force: true
+  become_user: "{{ epicbook_user }}"
+  register: epicbook_code
+  notify: Restart epicbook
+
+- name: Check whether dependencies are installed
+  ansible.builtin.stat:
+    path: "{{ epicbook_dir }}/node_modules"
+  register: node_modules_dir
+
+- name: Install production dependencies (only when the code changed)
+  ansible.builtin.command:
+    cmd: npm ci --omit=dev --no-audit --no-fund
+    chdir: "{{ epicbook_dir }}"
+  become_user: "{{ epicbook_user }}"
+  when: epicbook_code.changed or not node_modules_dir.stat.exists
+  notify: Restart epicbook
+
+# ---- 3. Database: schema + seed data (BEFORE the app's first start) --------
+- name: Prepare the database
+  ansible.builtin.import_role:
+    name: database
+
+# ---- 4. Run EpicBook as a persistent systemd service ------------------------
+- name: Create the config folder
+  ansible.builtin.file:
+    path: /etc/epicbook
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Write the environment file (contains the DB password - root only)
+  ansible.builtin.template:
+    src: epicbook.env.j2
+    dest: /etc/epicbook/epicbook.env
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Restart epicbook
+
+- name: Install the systemd service
+  ansible.builtin.template:
+    src: epicbook.service.j2
+    dest: /etc/systemd/system/epicbook.service
+    mode: "0644"
+  notify: Restart epicbook
+
+- name: Enable and start EpicBook
+  ansible.builtin.systemd_service:
+    name: epicbook
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Apply any pending restart now
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for EpicBook to listen on its port
+  ansible.builtin.wait_for:
+    port: "{{ epicbook_port }}"
+    timeout: 90
