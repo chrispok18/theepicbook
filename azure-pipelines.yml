@@ -45,6 +45,14 @@ stages:
             workingDirectory: $(ansibleDir)
             displayName: 'ansible-playbook --syntax-check'
 
+          - script: |
+              set -e
+              node --version
+              npm --version
+              npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+            workingDirectory: $(System.DefaultWorkingDirectory)
+            displayName: 'Dependency check (npm ci)'
+
   # ---------------------------------------------------------------------------
   - stage: Deploy
     displayName: 'Configure VMs & Deploy EpicBook'
