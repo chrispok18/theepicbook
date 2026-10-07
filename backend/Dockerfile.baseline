@@ -1,0 +1,7 @@
+# Baseline: single stage, full Debian Node image, all dependencies, runs as root
+FROM node:20
+WORKDIR /app
+COPY . .
+RUN npm install
+EXPOSE 8080
+CMD ["node", "server.js"]
