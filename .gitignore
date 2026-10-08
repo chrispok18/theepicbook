@@ -10,3 +10,7 @@ epicbook-azure-key
 *.retry
 # Environment files that could hold secrets
 .env
+
+.env
+logs/
+backups/

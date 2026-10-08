@@ -17,6 +17,16 @@ app.use(express.static("public"));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+// Health check: 200 only when the app is ready and the database answers, otherwise 503
+app.get("/health", async (req, res) => {
+  try {
+    await db.sequelize.authenticate();
+    res.status(200).json({ status: "ok", database: "connected" });
+  } catch (err) {
+    res.status(503).json({ status: "unavailable", database: "unreachable" });
+  }
+});
+
 app.engine("handlebars", exphbs({ defaultLayout: "main" }));
 app.set("view engine", "handlebars");
 
