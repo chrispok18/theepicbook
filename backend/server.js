@@ -17,6 +17,23 @@ app.use(express.static("public"));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+// Request log: one JSON line per request. Logs the path only (no query string, headers, cookies or body).
+app.use((req, res, next) => {
+  if (req.path === "/health") return next(); // skip health probes to avoid noise
+  const start = Date.now();
+  res.on("finish", () => {
+    console.log(JSON.stringify({
+      time: new Date().toISOString(),
+      service: "backend",
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      duration_ms: Date.now() - start
+    }));
+  });
+  next();
+});
+
 // Health check: 200 only when the app is ready and the database answers, otherwise 503
 app.get("/health", async (req, res) => {
   try {
